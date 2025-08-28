@@ -6,13 +6,125 @@ Time & ordering are the most fundamental aspects distributed systems. They defin
 
 The fundamental challenge: _ordering events without global time._
 
-=== The First Paper
+== Lamport Clocks: The Foundation of Distributed Systems
 
-- *Lamport, L.* (1978). "Time, Clocks, and the Ordering of Events in a Distributed System." _Communications of the ACM_, 21(7), 558-565.
-    - *Why it matters:* This is the Genesis paper of distributed systems. Every other concept builds on the happened-before relation.
-    - *Key insights:* Logical time, causal relationships, the impossibility of perfect simultaneity
+Physical clocks fail in distributed systems. Not occasionally—fundamentally. Consider this banking scenario:
 
-- *Learning objectives:* Understand why "now" doesn't exist in distributed systems
+- Process A: "Transfer \$100 from Account X to Account Y" at 14:32:15.234
+- Process B: "Check balance of Account X" at 14:32:15.228
+
+Process B's timestamp suggests it executed first, but network delays, clock drift, and system load mean this ordering bears no relationship to actual causality. The timestamp difference could represent microseconds of clock skew rather than actual event ordering.
+
+*The core issue*: We're trying to impose a global timeline on events that occurred in fundamentally different physical contexts. This breaks correctness guarantees that distributed systems require. Leslie Lamport reframed the problem. Instead of asking "when did this happen?" he asked "what could have influenced what?" This shift from absolute time to causal relationships provides the foundation for reasoning about distributed system correctness. #cite(<lamport1978time>)
+
+The *happened-before relation* (→) captures this:
+
+1. *Program order*: Within a single process, if event a occurs before event b in the program execution, then a → b
+2. *Message causality*: If a is sending a message and b is receiving that message, then a → b
+3. *Transitivity*: If a → c and c → b, then a → b
+
+Events that have no happened-before relationship are *concurrent*—they couldn't have causally influenced each other. Each process maintains a logical clock LC (integer counter). Three rules govern its behavior:
+
+*Rule 1* - Local events: `LC = LC + 1` before any local operation\
+*Rule 2* - Send messages: `LC = LC + 1`, attach LC to message\
+*Rule 3* - Receive messages: `LC = max(LC, received_timestamp) + 1`\
+
+==== Concrete Example
+
+Three processes executing concurrently:
+
+```
+P1: LC=0 → LC=1(a) → send to P2 → LC=2(c) → receive from P2 → LC=4(h)
+P2: LC=0 → LC=1(b) → receive from P1 → LC=2(d) → send to P3 → LC=3(f) → send to P1
+P3: LC=0 → receive from P2 → LC=3(e) → LC=4(g)
+```
+
+Message flows:
+- P1 sends timestamp 1 to P2
+- P2 receives, updates to max(1,1)+1 = 2, later sends timestamp 3 to P3 and P1
+- P3 receives timestamp 2, updates to max(0,2)+1 = 3
+
+*Result:* All causal relationships are preserved in the timestamp ordering:
+- a → d: LC(a)=1 < LC(d)=2 ✓
+- d → e: LC(d)=2 < LC(e)=3 ✓
+- f → h: LC(f)=3 < LC(h)=4 ✓
+
+=== What This Gives Us (and What It Doesn't)
+
+*Guarantees:*
+- Causal precedence: If a → b, then LC(a) < LC(b)
+- Minimal overhead: One integer per process, one timestamp per message
+- Implementation simplicity: Basic arithmetic operations only
+
+*Limitations:*
+- No concurrency detection: LC(a) < LC(b) doesn't imply a → b
+- No physical time correlation: Logical time can drift arbitrarily from wall-clock time
+- Ordering ambiguity: Concurrent events get arbitrary timestamp ordering
+
+==== Implementation in Practice
+
+```rust
+use std::sync::atomic::{AtomicU64, Ordering};
+
+pub struct LamportClock {
+    time: AtomicU64,
+}
+
+impl LamportClock {
+    pub fn new() -> Self {
+        Self { time: AtomicU64::new(0) }
+    }
+
+    // Rule 1: Local events
+    pub fn tick(&self) -> u64 {
+        self.time.fetch_add(1, Ordering::SeqCst)
+    }
+
+    // Rule 2: Message sending
+    pub fn send_timestamp(&self) -> u64 {
+        self.tick()
+    }
+
+    // Rule 3: Message receiving
+    pub fn receive_timestamp(&self, msg_timestamp: u64) -> u64 {
+        loop {
+            let current = self.time.load(Ordering::SeqCst);
+            let new_time = msg_timestamp.max(current) + 1;
+
+            if self.time.compare_exchange_weak(
+                current, new_time, Ordering::SeqCst, Ordering::SeqCst
+            ).is_ok() {
+                return new_time;
+            }
+        }
+    }
+}
+```
+
+*Critical implementation considerations:*
+- Thread safety through atomic operations
+- Compare-and-swap loops prevent race conditions
+- Clock monotonicity must be preserved across concurrent updates
+
+=== Why This Matters for System Design
+
+Lamport clocks change how you approach distributed system problems:
+
+*Before:* "How do I synchronize these processes in time?"\
+*After:* "Which events need causal ordering, and which can be concurrent?"\
+
+This reframing enables:
+- *Distributed mutual exclusion*: Processes can coordinate resource access using only logical timestamps
+- *Consistent snapshots*: Capture global system state without halting execution
+- *Causal consistency*: Ensure causally related operations appear in correct order across all replicas
+
+=== Connecting to Broader Distributed Systems Concepts
+
+Lamport clocks provide the theoretical foundation for understanding why distributed systems require different correctness models than single-machine systems. Every distributed algorithm you encounter builds on this concept of logical time and causal ordering.
+
+*Next steps*: Vector clocks extend this foundation to provide full concurrency detection, while hybrid approaches blend logical causality with physical time constraints. Understanding Lamport clocks first makes these extensions comprehensible rather than mysterious.
+
+The 1978 paper remains relevant because it solved the fundamental problem: how to reason about ordering in systems where "simultaneous" has no meaning. This insight drives every distributed system you'll design.
 
 == Modern Research
 
