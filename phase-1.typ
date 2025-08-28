@@ -1,10 +1,6 @@
-= Foundational Concepts
+= Foundational Concepts: Time & Ordering
 
-Time & ordering are the most fundamental aspects distributed systems. They define and drive the way we reason about complexity and decision-making.
-
-== Time and Ordering
-
-The fundamental challenge: _ordering events without global time._
+Time & ordering are the most fundamental aspects distributed systems. They define and drive the way we reason about complexity and decision-making yet present the most fundamental challenge: _ordering events without global time._
 
 == Lamport Clocks: The Foundation of Distributed Systems
 
@@ -29,7 +25,7 @@ Events that have no happened-before relationship are *concurrent*—they couldn'
 *Rule 2* - Send messages: `LC = LC + 1`, attach LC to message\
 *Rule 3* - Receive messages: `LC = max(LC, received_timestamp) + 1`\
 
-==== Concrete Example
+=== Concrete Example
 
 Three processes executing concurrently:
 
@@ -49,7 +45,7 @@ Message flows:
 - d → e: LC(d)=2 < LC(e)=3 ✓
 - f → h: LC(f)=3 < LC(h)=4 ✓
 
-=== What This Gives Us (and What It Doesn't)
+== What This Gives Us (and What It Doesn't)
 
 *Guarantees:*
 - Causal precedence: If a → b, then LC(a) < LC(b)
@@ -61,7 +57,7 @@ Message flows:
 - No physical time correlation: Logical time can drift arbitrarily from wall-clock time
 - Ordering ambiguity: Concurrent events get arbitrary timestamp ordering
 
-==== Implementation in Practice
+=== Implementation in Practice
 
 ```rust
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -106,7 +102,7 @@ impl LamportClock {
 - Compare-and-swap loops prevent race conditions
 - Clock monotonicity must be preserved across concurrent updates
 
-=== Why This Matters for System Design
+== Why This Matters for System Design
 
 Lamport clocks change how you approach distributed system problems:
 
@@ -118,7 +114,7 @@ This reframing enables:
 - *Consistent snapshots*: Capture global system state without halting execution
 - *Causal consistency*: Ensure causally related operations appear in correct order across all replicas
 
-=== Connecting to Broader Distributed Systems Concepts
+== Connecting to Broader Distributed Systems Concepts
 
 Lamport clocks provide the theoretical foundation for understanding why distributed systems require different correctness models than single-machine systems. Every distributed algorithm you encounter builds on this concept of logical time and causal ordering.
 
